@@ -1,23 +1,24 @@
 package main
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
 )
 
 type cover struct {
-	id   int
-	name string
+	Id   int
+	Name string
 }
 
-var db *sql.DB
+// var db *sql.DB
+var db *sqlx.DB
 
 func main() {
 	var err error
-	db, err = sql.Open("mysql", "root:admin123@tcp(127.0.0.1:3306)/go_db")
+	db, err = sqlx.Open("mysql", "root:admin123@tcp(127.0.0.1:3306)/go_db")
 
 	if err != nil {
 		panic(err)
@@ -35,27 +36,39 @@ func main() {
 	// 	panic(err)
 	// }
 
-	err = DeleteCover(8)
-	if err != nil {
-		panic(err)
-	}
-
-	covers, err := GetCovers()
-	if err != nil {
-		fmt.Println("error : ", err)
-		return
-	}
-	for _, cover := range covers {
-		fmt.Printf("cover %v\n", cover)
-	}
-	// cover, err := GerCover(1)
+	// err = DeleteCover(8)
 	// if err != nil {
 	// 	panic(err)
 	// }
-	// fmt.Printf("%v\n", cover)
+
+	// covers, err := GetCovers()
+	// covers, err := GetCoversX()
+	// if err != nil {
+	// 	fmt.Println("error : ", err)
+	// 	return
+	// }
+	// for _, cover := range covers {
+	// 	fmt.Printf("cover %v\n", cover)
+	// }
+	// cover, err := GerCover(1)
+	cover, err := GetCoverX(1)
+
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%v\n", cover)
 
 }
+func GetCoversX() ([]cover, error) {
+	query := "select id , name from cover"
+	covers := []cover{}
+	err := db.Select(&covers, query)
+	if err != nil {
+		return nil, err
+	}
+	return covers, nil
 
+}
 func GetCovers() ([]cover, error) {
 	err := db.Ping()
 	if err != nil {
@@ -76,7 +89,7 @@ func GetCovers() ([]cover, error) {
 	covers := []cover{}
 	for rows.Next() {
 		cover := cover{}
-		err := rows.Scan(&cover.id, &cover.name)
+		err := rows.Scan(&cover.Id, &cover.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -84,6 +97,17 @@ func GetCovers() ([]cover, error) {
 		covers = append(covers, cover)
 	}
 	return covers, err
+}
+
+func GetCoverX(id int) (*cover, error) {
+	query := "select id , name from cover where id = ?"
+	covers := cover{}
+	err := db.Get(&covers, query, id)
+	if err != nil {
+		return nil, err
+	}
+	return &covers, nil
+
 }
 
 func GerCover(id int) (*cover, error) {
@@ -101,7 +125,7 @@ func GerCover(id int) (*cover, error) {
 	row := db.QueryRow(query, id) // my sql
 	// row := db.QueryRow(query, sql.Named("id", id)) mssql
 	cover := cover{}
-	err = row.Scan(&cover.id, &cover.name)
+	err = row.Scan(&cover.Id, &cover.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -113,18 +137,27 @@ func AddCover(cover cover) error {
 	if err != nil {
 		return err
 	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+
 	query := "insert into cover (id,name) values(?,?)"
 
-	result, err := db.Exec(query, cover.id, cover.name)
+	result, err := tx.Exec(query, cover.Id, cover.Name)
 	if err != nil {
 		return err
 	}
 	affect, err := result.RowsAffected()
 	if err != nil {
+		tx.Rollback()
 		return err
 	}
 	if affect <= 0 {
 		return errors.New("cannot insert")
+	}
+	if tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -136,7 +169,7 @@ func UpdateCover(cover cover) error {
 	}
 	query := "update cover set name = ? where id =?"
 
-	result, err := db.Exec(query, cover.name, cover.id)
+	result, err := db.Exec(query, cover.Name, cover.Id)
 	if err != nil {
 		return err
 	}
